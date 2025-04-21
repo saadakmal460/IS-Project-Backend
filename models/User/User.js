@@ -23,6 +23,10 @@ const userSchema = mongoose.Schema({
         required: true,
         default: "local",
     },
+    isVerified:{
+        type:Boolean,
+        default:false
+    },
     lastLogin: {
         type: Date,
         default: Date.now,

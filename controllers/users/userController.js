@@ -42,22 +42,15 @@ const userController ={
                     message: info.message
                 });
             }
-            //generate token
-            const token = jwt.sign({ id: user?._id }, process.env.JWT_SECRET)
-            //set the token into the cookie 
-            res.cookie('token', token, {
-                httpOnly: true,
-                secure: false,
-                sameSite: 'strict',
-                maxAge: 24 * 60 * 60 * 1000,  //1 day
-            })
+            
             //send the response
             res.json({
                 status: 'success',
                 message: "Login Successfull",
                 username: user?.username,
                 email: user?.email,
-                _id: user?._id
+                mfa : "yes",
+               _id: user?._id
             })
         })(req, res, next);
     }),
