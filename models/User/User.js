@@ -13,6 +13,12 @@ const userSchema = mongoose.Schema({
         type: String,
         required: false,
     },
+    user_role:{
+        type:String,
+        required:true,
+        enum : ['user' , 'admin'],
+        default : 'user'
+    },
     googleId: {
         type: String,
         required: false,

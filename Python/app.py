@@ -11,6 +11,13 @@ from cryptography.hazmat.backends import default_backend
 import tempfile
 import requests
 from dotenv import load_dotenv
+from asgiref.wsgi import WsgiToAsgi
+from flask import Flask, jsonify
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_limiter.errors import RateLimitExceeded
+from middleware import logging_middleware
+from db import log_collection
 
 # Configs
 MAX_TEXT_LENGTH = 10000000
@@ -23,6 +30,24 @@ MAX_INPUT_TOKENS = 1024
 # App and Summarizer
 app = Flask(__name__)
 CORS(app)
+load_dotenv()
+
+limiter = Limiter(
+    get_remote_address,
+    app=app,
+    default_limits=[]
+)
+
+@app.errorhandler(RateLimitExceeded)
+def ratelimit_handler(e):
+    return jsonify({
+        "status": 429,
+        "error": "Too many requests, try again later."
+    }), 429
+    
+logging_middleware(app)
+
+
 summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
 tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
 
@@ -30,18 +55,28 @@ tokenizer = AutoTokenizer.from_pretrained("facebook/bart-large-cnn")
 private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
 public_key = private_key.public_key()
 
+
 def get_public_pem():
     return public_key.public_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PublicFormat.SubjectPublicKeyInfo
     )
 
+
+@app.route("/api/logs", methods=["GET"])
+def get_all_logs():
+    logs = list(log_collection.find().sort("timestamp", -1))
+    for log in logs:
+        log["_id"] = str(log["_id"])
+    return jsonify(logs)
+
+
 @app.route("/public-key", methods=["GET"])
+@limiter.limit("5 per minute") 
 def serve_public_key():
     return get_public_pem().decode(), 200
 
-def is_valid_file_extension(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
 
 def extract_text_from_file(file_path, file_extension):
     try:
@@ -54,21 +89,7 @@ def extract_text_from_file(file_path, file_extension):
     except Exception as error:
         raise ValueError(f"Error extracting text: {str(error)}")
 
-def clean_text(text):
-    lines = text.splitlines()
-    unique_lines = []
-    seen = set()
 
-    for line in lines:
-        clean_line = line.strip()
-        if clean_line and clean_line not in seen:
-            seen.add(clean_line)
-            unique_lines.append(clean_line)
-
-    text = " ".join(unique_lines)
-    text = re.sub(r"\b(Entity|LIMITED|Session:.*?2026)\b", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"\s{2,}", " ", text)
-    return text.strip()
 
 def chunk_text_by_sentences(text, max_tokens):
     sentences = re.split(r'(?<=\.)\s+', text)
@@ -94,6 +115,8 @@ def chunk_text_by_sentences(text, max_tokens):
 
     return chunks
 
+
+
 def decrypt_aes_gcm(ciphertext, key, iv, auth_tag):
     """
     Decrypts the ciphertext using AES-GCM with the provided key, IV, and authentication tag.
@@ -115,7 +138,9 @@ def decrypt_aes_gcm(ciphertext, key, iv, auth_tag):
         print(f"Error in AES-GCM decryption: {e}")
         raise
 
+
 @app.route("/summarize", methods=["POST"])
+@limiter.limit("5 per minute") 
 def summarize_document():
     try:
         captcha_token = request.form.get("captcha_token")
@@ -123,7 +148,8 @@ def summarize_document():
             return jsonify({"error": "Captcha token is missing."}), 400
 
         verify_url = "https://www.google.com/recaptcha/api/siteverify"
-        secret_key = os.environ.get("RECAPTCHA_SECRET_KEY")  # store in .env or env var
+        secret_key = os.getenv("RECAPTCHA_SECRET_KEY")  # store in .env or env var
+
 
         response = requests.post(verify_url, data={
             "secret": secret_key,
@@ -131,16 +157,49 @@ def summarize_document():
         })
         result = response.json()
 
-
         if not result.get("success"):
             return jsonify({"error": "Failed CAPTCHA verification."}), 403
-        
-        
-        # Get the file, key, IV, and auth_tag from the request
+
+        # Get the file, key, IV, auth_tag, and signature from the request
         enc_file = request.files["file"].read()
+        enc_data = request.files["data"].read()
+        
         encrypted_key = request.files["key"].read()
         encrypted_iv = request.files["iv"].read()
         auth_tag = request.files["auth_tag"].read()
+        signature = request.files["signature"].read()
+        public_key_pem = request.form["publicKey"]
+        
+
+        
+        if len(public_key_pem) % 4 != 0:
+            public_key_pem += "=" * (4 - len(public_key_pem) % 4)
+
+        
+        try:
+            decoded_key = public_key_pem.encode()
+            public_key = serialization.load_pem_public_key(decoded_key, backend=default_backend())
+
+        except Exception as e:
+            return jsonify({"error": f"Failed to load public key: {str(e)}"}), 400
+
+
+        # Verify the signature
+        data_to_verify = enc_data + encrypted_key + encrypted_iv + auth_tag
+
+        try:
+            public_key.verify(
+                signature,
+                data_to_verify,  # Verify the signature against the correct data
+                padding.PSS(
+                    mgf=padding.MGF1(hashes.SHA256()),
+                    salt_length=padding.PSS.MAX_LENGTH,
+                ),
+                hashes.SHA256()
+            )
+            app.logger.debug("Signature verified successfully")
+        except Exception as e:
+            return jsonify({"error": f"Signature verification failed: {str(e)}"}), 400
 
         # Decrypt the AES key and IV using RSA
         aes_key = private_key.decrypt(
@@ -157,11 +216,13 @@ def summarize_document():
 
         # Save decrypted file to a temp location
         os.makedirs(TEMP_DIR, exist_ok=True)
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".txt") as tmp_file:
             tmp_file.write(decrypted_file)
             tmp_file_path = tmp_file.name
 
         file_ext = tmp_file_path.rsplit('.', 1)[1].lower()
+        app.logger.debug(file_ext)
+        
         extracted_text = extract_text_from_file(tmp_file_path, file_ext)
 
         os.remove(tmp_file_path)
@@ -204,5 +265,5 @@ def summarize_document():
         app.logger.error(f"An error occurred: {e}")
         return jsonify({"error": "An error occurred during summarization."}), 500
 
-if __name__ == '__main__':
-    app.run(debug=True, port=8000)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000, debug=True)

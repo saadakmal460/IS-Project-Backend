@@ -27,7 +27,6 @@ const userController ={
         res.status(201).json({
             status: 'success',
             message: "User registered successfully",
-            userRegistered
         });
     }),
     //Login a user
@@ -49,6 +48,7 @@ const userController ={
                 message: "Login Successfull",
                 username: user?.username,
                 email: user?.email,
+                role : user?.user_role,
                 mfa : "yes",
                _id: user?._id
             })

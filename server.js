@@ -5,8 +5,10 @@ const passport = require("./utils/passport-config")
 const express = require("express");
 const connectDB = require("./utils/connectDB");
 const usersRouter = require('./router/user/usersRouter');
-
+const {globalLimiter} = require('./utils/RateLimiter')
+const logMiddleware = require("./Middleware/Logger");
 //call the db
+
 connectDB();
 
 const app = express();
@@ -21,12 +23,21 @@ const corsOptions = {
     credentials: true,
 };
 app.use(cors(corsOptions));
-
+app.use(globalLimiter)
 //Passport middleware
+
 app.use(passport.initialize());
+app.use(logMiddleware);
 
 //Routes
+// app.get('/' ,(req, res) => {
+//     res.status(200).json('yes')
+// });
+
+
 app.use("/api/v1/users", usersRouter);
+app.use("/api/security", require('./router/Security/Security'));
+
 
 //Not Found
 app.use((req, res, next) => {
