@@ -3,6 +3,7 @@ require('dotenv').config();
 const cors = require("cors");
 const passport = require("./utils/passport-config")
 const express = require("express");
+const cookieParser = require("cookie-parser");
 const connectDB = require("./utils/connectDB");
 const usersRouter = require('./router/user/usersRouter');
 const {globalLimiter} = require('./utils/RateLimiter')
@@ -28,6 +29,7 @@ app.use(globalLimiter)
 
 app.use(passport.initialize());
 app.use(logMiddleware);
+app.use(cookieParser()) //for parsing cookies automatically
 
 //Routes
 // app.get('/' ,(req, res) => {

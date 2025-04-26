@@ -9,6 +9,12 @@ usersRouter.post("/register", userController.register);
 //login a user
 usersRouter.post("/login", userController.login);
 
+//Google Auth
+usersRouter.get("/auth/google", userController.googleAuth);
+//Google Auth Callback
+usersRouter.get("/auth/google/callback", userController.googleAuthCallback);
+
+usersRouter.get("/checkAuthenticated", userController.checkAuthenticated)
 
 usersRouter.post("/sendOtp", generateAndSendOtp);
 
