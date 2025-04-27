@@ -47,6 +47,7 @@ const generateAndSendOtp = async (req, res) => {
 const verifyOtp = async (req, res) => {
 
     const { email, otp } = req.body;
+    
 
     if (!email || !otp) {
         return res.status(400).json({ message: "Email and OTP are required." });
@@ -97,16 +98,20 @@ const verifyOtp = async (req, res) => {
 const verifyOtpAtLogin = async (req,res)=>{
     const { email, otp } = req.body;
 
+
+
     if (!email || !otp) {
         return res.status(400).json({ message: "Email and OTP are required." });
     }
 
     try {
         const existingOtp = await OTP.findOne({ email:email });
-
+        
         if (!existingOtp) {
             return res.status(400).json({ message: "OTP not found. Request a new one." });
         }
+
+        
 
         // Check if OTP is expired
         if (Date.now() > existingOtp.expiresAt) {
@@ -120,6 +125,8 @@ const verifyOtpAtLogin = async (req,res)=>{
 
             return res.status(400).json({ message: "Invalid OTP." });
         }
+        
+
 
         const updatedUser = await User.findOneAndUpdate(
             { email: email },
@@ -127,7 +134,7 @@ const verifyOtpAtLogin = async (req,res)=>{
             { new: true }
         );
 
-        const token = jwt.sign({ id: updatedUser?._id }, process.env.JWT_SECRET , {
+        const token = jwt.sign({ id: updatedUser?._id , role:updatedUser?.user_role }, process.env.JWT_SECRET , {
             expiresIn: process.env.JWT_LIFETIME,
         })
         //set the token into the cookie 
@@ -137,7 +144,6 @@ const verifyOtpAtLogin = async (req,res)=>{
             sameSite: 'strict',
             maxAge: 24 * 60 * 60 * 1000,  //1 day
         })
-
 
         if (!updatedUser) {
             return res.status(404).json({ message: "Employee not found" });

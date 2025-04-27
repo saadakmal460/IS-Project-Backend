@@ -62,17 +62,18 @@ const userController = {
         passport.authenticate('google', {
             failureRedirect: '/login',
             session: false,
-        }, (err, user, info)=>{
-            if(err){
+        }, (err, user, info) => {
+            if (err) {
                 return next(err);
             }
-            if(!user){
+            if (!user) {
                 return res.redirect('http://localhost:5173/google-login-error');
             }
             //Generate JWT token
-            const token = jwt.sign({ id: user?._id }, process.env.JWT_SECRET, {
-                expiresIn: '3d',
-            });
+
+            const token = jwt.sign({ id: user?._id, role: user?.user_role }, process.env.JWT_SECRET, {
+                expiresIn: process.env.JWT_LIFETIME,
+            })
             //set the token in the cookies
             res.cookie('token', token, {
                 httpOnly: true,
@@ -80,8 +81,10 @@ const userController = {
                 sameSite: 'strict',
                 maxAge: 24 * 60 * 60 * 1000, //1 day
             });
+            const redirectUrl = `http://localhost:5173/success?token=${token}&name=${encodeURIComponent(user.username)}&email=${encodeURIComponent(user.email)}
+            &role=${encodeURIComponent(user.user_role)}&_id=${user._id}`
             //redirect to the home page
-            res.redirect('http://localhost:5173/');
+            res.redirect(redirectUrl);
         })(req, res, next)
     }),
 

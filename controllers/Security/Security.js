@@ -7,7 +7,7 @@ const Logs = require("../../models/Logs");
 exports.blockIp = async (req, res) => {
   try {
     const { ipAddress, reason } = req.body;
-    console.log('yes')
+    
     // Validate that the IP address is in the correct format
     if (!ipAddress || !reason) {
       return res.status(400).json({ message: "IP address and reason are required" });
@@ -43,6 +43,51 @@ exports.blockIp = async (req, res) => {
     });
   }
 };
+
+
+exports.getBlockedIps = async (req, res) => {
+  try {
+    const blockedIps = await BlockedIP.find(); // Fetch all blocked IPs
+    return res.status(200).json({
+      message: 'Blocked IPs retrieved successfully',
+      blockedIps,
+    });
+  } catch (error) {
+    console.error('Error fetching blocked IPs:', error);
+    return res.status(500).json({
+      message: 'An error occurred while fetching blocked IPs',
+      error: error.message || 'Internal Server Error',
+    });
+  }
+};
+
+exports.deleteBlockedIp = async (req, res) => {
+  try {
+    const { id } = req.params; // Get the ID from URL params
+
+    if (!id) {
+      return res.status(400).json({ message: "ID is required" });
+    }
+
+    const deletedIp = await BlockedIP.findByIdAndDelete(id);
+
+    if (!deletedIp) {
+      return res.status(404).json({ message: "Blocked IP not found" });
+    }
+
+    return res.status(200).json({
+      message: `Blocked IP with ID ${id} has been deleted successfully`,
+      deletedIp,
+    });
+  } catch (error) {
+    console.error('Error deleting blocked IP:', error);
+    return res.status(500).json({
+      message: 'An error occurred while deleting the blocked IP',
+      error: error.message || 'Internal Server Error',
+    });
+  }
+};
+
 
 
 exports.GetLogs = async (req, res) => {

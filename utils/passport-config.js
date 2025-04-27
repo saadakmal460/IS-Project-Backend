@@ -103,6 +103,7 @@ passport.use(
                         googleId: id,
                         profilePicture: picture,
                         authMethod: 'google',
+                        user_role:'user',
                         email
                     });
                 }

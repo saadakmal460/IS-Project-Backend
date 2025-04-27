@@ -8,6 +8,9 @@ const connectDB = require("./utils/connectDB");
 const usersRouter = require('./router/user/usersRouter');
 const {globalLimiter} = require('./utils/RateLimiter')
 const logMiddleware = require("./Middleware/Logger");
+const fileUpload = require('express-fileupload');
+
+
 //call the db
 
 connectDB();
@@ -18,13 +21,18 @@ const app = express();
 const PORT = 5000
 
 // Middlewares
-app.use(express.json()); 
 const corsOptions = {
     origin: ['http://localhost:5173'],
     credentials: true,
 };
+
 app.use(cors(corsOptions));
+app.use(express.json()); 
+
+
+
 app.use(globalLimiter)
+app.use(fileUpload());
 //Passport middleware
 
 app.use(passport.initialize());
@@ -39,6 +47,10 @@ app.use(cookieParser()) //for parsing cookies automatically
 
 app.use("/api/v1/users", usersRouter);
 app.use("/api/security", require('./router/Security/Security'));
+app.use("/api/crypto", require('./router/Crypto/cryptoRoutes'));
+app.use("/api/model", require('./router/Summarizer/ModelRoutes'));
+
+
 
 
 //Not Found
